@@ -99,3 +99,47 @@ table{width:100%;border-collapse:collapse;font-size:13px}th{font-size:11px;text-
 .tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}.tabs button{flex:0 0 auto;min-height:40px;padding:0 14px;border-radius:12px;border:none;background:var(--card);font-weight:700;font-size:13px;cursor:pointer;color:var(--ink);box-shadow:var(--shadow)}.tabs button.on{background:var(--green);color:var(--lime)}
 .hdr .back{flex:0 0 auto;width:44px;height:44px}
 .hdr .title{overflow-wrap:anywhere}
+
+/* ===== Tahap UX: navigasi, istilah, foto, konfirmasi ===== */
+.off{font-size:.78em;font-weight:500;color:var(--mute)}
+.link{background:none;border:none;padding:4px 0;color:var(--ok);font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;align-self:flex-start;min-height:32px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.pill i{width:7px;height:7px;border-radius:4px;display:inline-block;background:currentColor}
+.plist{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+.pcard.wide{width:auto}
+.leg{display:inline-flex;align-items:center;gap:5px;color:var(--mute)}.leg i{width:10px;height:4px;border-radius:2px;display:inline-block}.leg i.g{background:var(--green)}.leg i.o{background:var(--warn)}
+.kpi{font:inherit;color:inherit;cursor:default}button.kpi{cursor:pointer}
+.tiles .tile svg{width:26px;height:26px}
+.inset{background:var(--bg);border-radius:12px;padding:10px 12px}
+/* RAB: kartu per pekerjaan, bukan tabel */
+.rablist{display:flex;flex-direction:column;gap:8px}
+.rabrow{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto;gap:10px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
+.rabrow:first-child{border-top:none}
+@media(max-width:560px){.rabrow{grid-template-columns:minmax(0,1fr) auto}.rabrow>input{grid-column:1/-1}}
+/* tombol foto besar */
+.photoBtn{display:flex;align-items:center;justify-content:center;gap:10px;min-height:60px;border-radius:18px;border:2px dashed var(--green);background:var(--okbg);color:var(--green);font-weight:800;font-size:17px;cursor:pointer}
+.photoBtn input{display:none}
+.pthumb{position:relative;display:inline-block}.pthumb img{width:80px;height:80px;object-fit:cover;border-radius:12px;display:block}
+.pthumb button{position:absolute;top:-6px;right:-6px;width:28px;height:28px;border-radius:14px;border:2px solid #fff;background:var(--bad);color:#fff;font-weight:800;cursor:pointer;line-height:1}
+/* foto dengan cadangan bila gagal dimuat */
+.ph{display:inline-flex;width:64px;height:64px;border-radius:12px;overflow:hidden;background:var(--grey);flex:0 0 auto;align-items:center;justify-content:center;text-decoration:none}
+.ph img{width:100%;height:100%;object-fit:cover}.ph.sm{width:40px;height:40px;border-radius:10px}
+.ph.broken img{display:none}.ph.broken::after{content:"📷";font-size:20px;opacity:.5}
+/* kotak konfirmasi */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(11,20,16,.45);display:flex;align-items:flex-end;justify-content:center;padding:16px}
+.sheet{width:100%;max-width:440px;background:var(--card);border-radius:24px;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 50px rgba(11,20,16,.3)}
+@media(min-width:700px){.modal{align-items:center}}
+.btn.red{background:var(--bad);color:#fff}
+input.err{border-color:var(--bad)}
+/* pesan singkat di atas, tidak menutupi tombol */
+.toast{top:12px;bottom:auto}
+#busy{position:fixed;top:0;left:0;right:0;z-index:60;background:var(--green);color:var(--lime);text-align:center;font-weight:700;font-size:13px;padding:8px}
+body.busy #app{pointer-events:none;opacity:.75}
+/* layar "terkirim" */
+.sent{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:48px 16px 24px;color:var(--ok)}
+.sent h1{color:var(--ink);font-size:26px}.sent span{color:var(--mute);font-size:15px;max-width:340px}
+.sent.warn{color:var(--warn)}
+/* Admin: sidebar di layar lebar, nav bawah di HP */
+.shell.desk .nav{display:none}
+@media(max-width:899px){.shell.desk .side{display:none}.shell.desk .nav{display:grid}.shell.desk .page{padding:16px 16px 120px;max-width:560px}}
+.btn:disabled{background:#C9CFCA;color:#5B665F}
