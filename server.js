@@ -5,6 +5,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const BETON = require('./public/beton.js');
+const INTERIOR = require('./public/interior.js');
 
 const ROOT = __dirname;
 // STORAGE_DIR: folder penyimpanan tetap (disk/volume di hosting). Default: folder aplikasi.
@@ -116,7 +118,7 @@ const json = (res, code, body) => { res.writeHead(code, { 'Content-Type': 'appli
 const bad = (res, msg, code = 400) => json(res, code, { error: msg });
 const projectFor = (u, id) => { const p = DB.projects.find((x) => x.id === id); if (!p) return null; if (u.role === 'mandor' && p.mandor !== u.role) return null; return p; };
 const canMoney = (u) => u.role === 'owner' || u.role === 'admin';
-const viewProject = (u, p) => { const base = { id: p.id, name: p.name, client: p.client, address: p.address, lat: p.lat, lng: p.lng, status: p.status, start: p.start, divisions: p.divisions.map((d) => ({ id: d.id, name: d.name, progress: d.progress, verified: d.verified })) }; if (!canMoney(u)) return base; return Object.assign(base, { buk: p.buk, dp: p.dp, retensi: p.retensi, months: p.months, termins: p.termins, kasAwal: p.kasAwal, divisions: p.divisions, vos: p.vos || [], offer: p.offer || null, summary: summary(p) }); };
+const viewProject = (u, p) => { const base = { mutus: Array.from(new Set((p.struct || []).filter((e) => e.met !== 'manual').map((e) => e.mutu))), id: p.id, name: p.name, client: p.client, address: p.address, lat: p.lat, lng: p.lng, status: p.status, start: p.start, divisions: p.divisions.map((d) => ({ id: d.id, name: d.name, progress: d.progress, verified: d.verified })) }; if (!canMoney(u)) return base; return Object.assign(base, { buk: p.buk, dp: p.dp, retensi: p.retensi, months: p.months, termins: p.termins, kasAwal: p.kasAwal, divisions: p.divisions, vos: p.vos || [], offer: p.offer || null, struct: p.struct || null, structPerCor: p.structPerCor || 20, interior: p.interior || null, area: p.area || (p.offer && p.offer.area) || null, lantai: p.lantai || null, summary: summary(p) }); };
 
 const routes = {
   'POST /api/login': (req, res, b) => {
@@ -169,11 +171,13 @@ const routes = {
   'POST /api/nota': (req, res, b, u) => {
     const p = projectFor(u, b.projectId); if (!p) return bad(res, 'Proyek tidak ditemukan');
     const photo = savePhoto(b.photo, 'nota'); if (!photo) return bad(res, 'Foto nota wajib');
-    const amount = Math.round(Number(b.amount) || 0); if (amount <= 0) return bad(res, 'Nominal harus diisi');
+    const amount = Math.round(Number(b.amount) || 0); if (amount <= 0 && b.type !== 'readymix') return bad(res, 'Nominal harus diisi');
+    const rm = b.type === 'readymix' && b.rm ? { mutu: String(b.rm.mutu || '').slice(0, 8), vol: Number(b.rm.vol) || 0, out: String(b.rm.out || '').slice(0, 5), arrive: String(b.rm.arrive || '').slice(0, 5), slump: String(b.rm.slump || '').slice(0, 10) } : null;
     const n = { id: nid('n'), projectId: p.id, who: u.role, name: u.name, ts: now(), type: b.type || 'material', desc: String(b.desc || '').slice(0, 200), shop: String(b.shop || '').slice(0, 100), amount, qty: Number(b.qty) || null, unitKey: b.unitKey || null, photo, status: 'pending', check: null, overMarket: 0 };
+    if (rm) { n.rm = rm; n.rmCheck = BETON.ticketCheck(rm, p.struct); n.desc = n.desc || ('Tiket ready mix ' + rm.mutu + ' · ' + rm.vol + ' m³'); if (amount > 0) { n.unitKey = 'rm' + rm.mutu.replace('-', ''); n.qty = rm.vol; } }
     // cek otomatis terhadap matriks harga
     if (n.unitKey && n.qty) { const it = DB.matrix.items.find((x) => x.key === n.unitKey); if (it) { const unit = amount / n.qty, d = unit / it.typ - 1; n.check = { item: it.name, unit, market: it.typ, high: it.high, diff: d, flag: unit > it.high ? 'tinggi' : unit < it.low ? 'rendah' : 'wajar' }; n.overMarket = Math.max(0, (unit - it.typ) * n.qty); } }
-    DB.notas.push(n); logEv(u.name, 'Kirim nota ' + n.desc + ' Rp ' + amount.toLocaleString('id-ID') + (n.check ? ' · ' + n.check.flag + ' vs pasar' : ''), p.id); saveDB(); json(res, 200, n);
+    DB.notas.push(n); logEv(u.name, (rm ? 'Kirim tiket ready mix ' + rm.mutu + ' ' + rm.vol + ' m³' + (n.rmCheck.late ? ' · ' + n.rmCheck.minutes + ' menit di jalan' : '') + (!n.rmCheck.mutuOk ? ' · mutu beda dari RAB' : '') : 'Kirim nota ' + n.desc + ' Rp ' + amount.toLocaleString('id-ID')) + (n.check ? ' · ' + n.check.flag + ' vs pasar' : ''), p.id); saveDB(); json(res, 200, n);
   },
 
   // ----- admin / owner -----
@@ -200,7 +204,11 @@ const routes = {
     ['lat', 'lng', 'kasAwal', 'months', 'dp', 'retensi'].forEach((k) => { if (b[k] != null && b[k] !== '') p[k] = Number(b[k]); });
     if (b.buk != null) { const floorBuk = Math.ceil((1 / (1 - (CFG.overhead + CFG.bunga + CFG.pph)) - 1) * 100); p.buk = Math.max(floorBuk, Math.min(25, Number(b.buk) || floorBuk)); }
     if (b.offer && typeof b.offer === 'object') p.offer = b.offer;
-    if (Array.isArray(b.divisions)) p.divisions = b.divisions.map((d, i) => ({ id: i, name: String(d.name || '').slice(0, 80), rap: Math.max(0, Number(d.rap) || 0), progress: Number(d.progress) || 0, verified: Number(d.verified) || 0 }));
+    if (Array.isArray(b.struct)) p.struct = b.struct.slice(0, 40).map((e) => ({ el: String(e.el), mutu: String(e.mutu), met: String(e.met), baja: String(e.baja || 'bjts'), vol: Number(e.vol) || 0, ratio: e.ratio === '' || e.ratio == null ? null : Number(e.ratio), slab: e.slab === 'bondek' ? 'bondek' : 'konv' }));
+    if (b.structPerCor != null) p.structPerCor = Number(b.structPerCor) || 20;
+    if (Array.isArray(b.interior)) p.interior = b.interior.slice(0, 40).map((r) => ({ key: String(r.key), by: ['k', 'j', 'x'].includes(r.by) ? r.by : 'k', qty: Number(r.qty) || 0 }));
+    ['area', 'lantai'].forEach((k) => { if (b[k] != null && b[k] !== '') p[k] = Number(b[k]); });
+    if (Array.isArray(b.divisions)) p.divisions = b.divisions.map((d, i) => ({ id: i, src: d.src || undefined, name: String(d.name || '').slice(0, 80), rap: Math.max(0, Number(d.rap) || 0), progress: Number(d.progress) || 0, verified: Number(d.verified) || 0 }));
     logEv(u.name, 'Simpan RAB ' + p.name + ' · BUK ' + p.buk + '%', p.id); saveDB(); json(res, 200, viewProject(u, p));
   },
   'POST /api/vo': (req, res, b, u) => {
@@ -245,6 +253,8 @@ const routes = {
     const p = DB.projects.find((x) => x.id === (b.projectId || DB.projects[0].id)); if (!p) return bad(res, 'Proyek tidak ada');
     const S = summary(p), lines = [['Buku Proyek — ' + p.name], ['Klien', p.client], [], ['Pekerjaan', 'RAP', 'Harga ke klien', 'Progres lapor', 'Progres verifikasi']];
     p.divisions.forEach((d) => lines.push([d.name, d.rap, d.rap * (1 + p.buk / 100), d.progress + '%', d.verified + '%']));
+    if (p.struct && p.struct.length) { const P2 = BETON.prices(DB.matrix); lines.push([], ['Struktur beton per elemen'], ['Elemen', 'Mutu', 'Cara cor', 'Besi', 'Volume m3', 'Biaya per m3', 'Jumlah']); p.struct.forEach((e) => { const r = BETON.element(e, P2, { volPerCor: p.structPerCor, lantai: p.lantai }); lines.push([BETON.EL[e.el][0], e.mutu, BETON.MET[e.met][0], (e.el === 'kerja' ? '-' : BETON.BAJA[e.baja] || ''), e.vol, r.perM3, r.total]); }); }
+    if (p.interior && p.interior.length) { const ir = INTERIOR.calc(p.interior); lines.push([], ['Interior - termasuk'], ['Pekerjaan', 'Oleh', 'Jumlah', 'Satuan']); ir.termasuk.forEach((r) => lines.push([r.name, INTERIOR.BY[r.by][0] + ' (' + INTERIOR.BY[r.by][1] + ')', r.qty, r.unit])); lines.push([], ['Interior - TIDAK termasuk (oleh pemilik / vendor lain)']); ir.tidak.forEach((r) => lines.push([r.name, '', r.qty, r.unit])); }
     lines.push([], ['Nilai kontrak', S.contract], ['RAP', S.rap], ['Biaya disetujui', S.spent], ['Kas', S.kas], ['Pendapatan diakui (PSAK 72)', S.revenue], ['Proyeksi laba bersih', S.labaAkhir]);
     const csv = '﻿' + lines.map((l) => l.map((c) => typeof c === 'number' ? Math.round(c) : '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\r\n');
     res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="' + p.name.replace(/[^\w]+/g, '_') + '.csv"' }); res.end(csv);

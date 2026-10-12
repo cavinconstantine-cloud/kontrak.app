@@ -143,3 +143,11 @@ body.busy #app{pointer-events:none;opacity:.75}
 .shell.desk .nav{display:none}
 @media(max-width:899px){.shell.desk .side{display:none}.shell.desk .nav{display:grid}.shell.desk .page{padding:16px 16px 120px;max-width:560px}}
 .btn:disabled{background:#C9CFCA;color:#5B665F}
+/* ===== struktur, interior, harga fair ===== */
+.introw{display:flex;flex-direction:column;gap:6px}
+.chip.sm{min-height:34px;padding:0 10px;font-size:12px;border-radius:10px}
+.fairbar{position:relative;height:14px;border-radius:7px;background:var(--grey);overflow:hidden;margin-top:4px}
+.fairbar .zone{position:absolute;top:0;bottom:0}.fairbar .zone.bad{background:#F6B9B5}.fairbar .zone.ok{background:#BFE6A0}.fairbar .zone.warn{background:#FCDDA0}
+.fairbar i{position:absolute;top:-2px;width:4px;height:18px;margin-left:-2px;background:var(--ink);border-radius:2px}
+select.sm{min-height:40px;font-size:14px;padding:0 8px;border-radius:10px}
+.rabrow.src{grid-template-columns:minmax(0,1fr) auto auto}

@@ -41,7 +41,7 @@ window.API = (() => {
   const canMoney = () => user && user.role !== 'mandor';
   const myProjects = () => D.projects.filter((p) => !user || user.role !== 'mandor' || (p.mandor || 'mandor') === 'mandor');
   const projectFor = (id) => myProjects().find((p) => p.id === id) || fail('Proyek tidak ditemukan');
-  const viewProject = (p) => { const base = { id: p.id, name: p.name, client: p.client, address: p.address, lat: p.lat, lng: p.lng, status: p.status, start: p.start, divisions: p.divisions.map((d) => ({ id: d.id, name: d.name, progress: d.progress, verified: d.verified })) }; return canMoney() ? Object.assign(base, { buk: p.buk, dp: p.dp, retensi: p.retensi, termins: p.termins, kasAwal: p.kasAwal, divisions: p.divisions, vos: p.vos || [], offer: p.offer || null, summary: summary(p) }) : base; };
+  const viewProject = (p) => { const base = { mutus: Array.from(new Set((p.struct || []).filter((e) => e.met !== 'manual').map((e) => e.mutu))), id: p.id, name: p.name, client: p.client, address: p.address, lat: p.lat, lng: p.lng, status: p.status, start: p.start, divisions: p.divisions.map((d) => ({ id: d.id, name: d.name, progress: d.progress, verified: d.verified })) }; return canMoney() ? Object.assign(base, { buk: p.buk, dp: p.dp, retensi: p.retensi, termins: p.termins, kasAwal: p.kasAwal, divisions: p.divisions, vos: p.vos || [], offer: p.offer || null, struct: p.struct || null, structPerCor: p.structPerCor || 20, interior: p.interior || null, area: p.area || (p.offer && p.offer.area) || null, lantai: p.lantai || null, summary: summary(p) }) : base; };
 
   function subscribe() {
     dbh.doc('app/config').onSnapshot((s) => { D.config = s.exists ? s.data() : null; D.ready = true; changed(); }, (e) => console.error(e));
@@ -84,10 +84,12 @@ window.API = (() => {
       await put('reports', rec.id, rec); await dbh.doc('projects/' + p.id).update({ divisions }); await logEv('Lapor progres: ' + items.map((it) => p.divisions[it.div].name + ' ' + it.pct + '%').join(', '), p.id); return rec;
     },
     async nota(b) {
-      const p = projectFor(b.projectId), amount = Math.round(Number(b.amount) || 0); if (amount <= 0) fail('Nominal harus diisi'); const photo = await upload(b.file);
+      const p = projectFor(b.projectId), amount = Math.round(Number(b.amount) || 0); if (amount <= 0 && b.type !== 'readymix') fail('Nominal harus diisi'); const photo = await upload(b.file);
+      const rm = b.type === 'readymix' && b.rm ? { mutu: String(b.rm.mutu || ''), vol: Number(b.rm.vol) || 0, out: String(b.rm.out || ''), arrive: String(b.rm.arrive || ''), slump: String(b.rm.slump || '') } : null;
       const n = { id: nid('n'), projectId: p.id, who: user.role, name: user.name, ts: now(), type: b.type || 'material', desc: String(b.desc || '').slice(0, 200), shop: String(b.shop || '').slice(0, 100), amount, qty: Number(b.qty) || null, unitKey: b.unitKey || null, photo, status: 'pending', check: null, overMarket: 0, note: '' };
+      if (rm) { n.rm = rm; n.rmCheck = BETON.ticketCheck(rm, p.struct); n.desc = n.desc || ('Tiket ready mix ' + rm.mutu + ' · ' + rm.vol + ' m³'); if (amount > 0) { n.unitKey = 'rm' + rm.mutu.replace('-', ''); n.qty = rm.vol; } }
       if (n.unitKey && n.qty && D.matrix) { const it = D.matrix.items.find((x) => x.key === n.unitKey); if (it) { const unit = amount / n.qty, diff = unit / it.typ - 1; n.check = { item: it.name, unit, market: it.typ, high: it.high, diff, flag: unit > it.high ? 'tinggi' : unit < it.low ? 'rendah' : 'wajar' }; n.overMarket = Math.max(0, (unit - it.typ) * n.qty); } }
-      await put('notas', n.id, n); await logEv('Kirim nota ' + n.desc + ' ' + rp(amount) + (n.check ? ' · ' + n.check.flag + ' vs pasar' : ''), p.id); return n;
+      await put('notas', n.id, n); await logEv((rm ? 'Kirim tiket ready mix ' + rm.mutu + ' ' + rm.vol + ' m³' + (n.rmCheck.late ? ' · ' + n.rmCheck.minutes + ' menit di jalan' : '') + (!n.rmCheck.mutuOk ? ' · mutu beda dari RAB' : '') : 'Kirim nota ' + n.desc + ' ' + rp(amount)) + (n.check ? ' · ' + n.check.flag + ' vs pasar' : ''), p.id); return n;
     },
     async decide(id, decision, note) {
       const n = D.notas.find((x) => x.id === id) || fail('Nota tidak ada'); let patch;
@@ -110,7 +112,11 @@ window.API = (() => {
       const C = CFG(), floorBuk = Math.ceil((1 / (1 - (C.overhead + C.bunga + C.pph)) - 1) * 100);
       if (b.buk != null) p.buk = Math.max(floorBuk, Math.min(25, Number(b.buk) || floorBuk));
       if (b.offer && typeof b.offer === 'object') p.offer = b.offer;
-      if (Array.isArray(b.divisions)) p.divisions = b.divisions.map((d, i) => ({ id: i, name: String(d.name || '').slice(0, 80), rap: Math.max(0, Number(d.rap) || 0), progress: Number(d.progress) || 0, verified: Number(d.verified) || 0 }));
+      if (Array.isArray(b.struct)) p.struct = b.struct.slice(0, 40).map((e) => ({ el: String(e.el), mutu: String(e.mutu), met: String(e.met), baja: String(e.baja || 'bjts'), vol: Number(e.vol) || 0, ratio: e.ratio === '' || e.ratio == null ? null : Number(e.ratio), slab: e.slab === 'bondek' ? 'bondek' : 'konv' }));
+      if (b.structPerCor != null) p.structPerCor = Number(b.structPerCor) || 20;
+      if (Array.isArray(b.interior)) p.interior = b.interior.slice(0, 40).map((r) => ({ key: String(r.key), by: ['k', 'j', 'x'].includes(r.by) ? r.by : 'k', qty: Number(r.qty) || 0 }));
+      ['area', 'lantai'].forEach((k) => { if (b[k] != null && b[k] !== '') p[k] = Number(b[k]); });
+      if (Array.isArray(b.divisions)) p.divisions = b.divisions.map((d, i) => ({ id: i, src: d.src || null, name: String(d.name || '').slice(0, 80), rap: Math.max(0, Number(d.rap) || 0), progress: Number(d.progress) || 0, verified: Number(d.verified) || 0 }));
       await put('projects', p.id, p); await logEv('Simpan RAB ' + p.name + ' · BUK ' + p.buk + '%', p.id); return viewProject(p);
     },
     async vo(b) {

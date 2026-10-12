@@ -19,7 +19,7 @@ window.API = (() => {
     password: (o, n) => call('/api/password', { old: o, new: n }),
     async absen(b) { const photo = await shrink(b.file, 800); return call('/api/absen', { projectId: b.projectId, type: b.type, lat: b.lat, lng: b.lng, workers: b.workers, photo }); },
     async report(b) { const photos = []; for (const f of b.files.slice(0, 8)) photos.push(await shrink(f)); return call('/api/report', { projectId: b.projectId, items: b.items, note: b.note, photos }); },
-    async nota(b) { const photo = await shrink(b.file); return call('/api/nota', { projectId: b.projectId, type: b.type, desc: b.desc, shop: b.shop, amount: b.amount, qty: b.qty, unitKey: b.unitKey, photo }); },
+    async nota(b) { const photo = await shrink(b.file); return call('/api/nota', { projectId: b.projectId, type: b.type, desc: b.desc, shop: b.shop, amount: b.amount, qty: b.qty, unitKey: b.unitKey, rm: b.rm, photo }); },
     decide: (id, decision, note) => call('/api/nota/decide', { id, decision, note }).then((n) => n.status),
     verify: (projectId, reportId) => call('/api/verify', { projectId, reportId }),
     saveProject: (b) => call('/api/project/save', b),

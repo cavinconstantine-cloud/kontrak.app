@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path');
 const R = path.join(__dirname, '..');
 const css = fs.readFileSync(path.join(R, 'public/style.css'), 'utf8');
 const api = fs.readFileSync(path.join(__dirname, 'api-artifact.js'), 'utf8');
-const kon = fs.readFileSync(path.join(R, 'public/konsultan.js'), 'utf8');
+const kon = ['beton.js', 'interior.js', 'konsultan.js'].map((f) => fs.readFileSync(path.join(R, 'public', f), 'utf8')).join('\n');
 const app = fs.readFileSync(path.join(R, 'public/app.js'), 'utf8');
 const html = `<!doctype html>
 <html lang="id">
