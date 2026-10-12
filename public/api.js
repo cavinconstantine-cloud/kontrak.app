@@ -26,6 +26,8 @@ window.API = (() => {
     invoice: (projectId, termin) => call('/api/invoice', { projectId, termin }),
     paid: (id) => call('/api/invoice/paid', { id }),
     matrix: (key, patch) => call('/api/matrix', Object.assign({ key }, patch)),
+    vo: (b) => call('/api/vo', b),
+    voStatus: (id, status, by) => call('/api/vo/status', { id, status, by }),
     photoUrl: (ref) => ref,
     exportCsv(p) { window.location.href = '/api/export?projectId=' + encodeURIComponent(p.id); },
     canUpload: () => true

@@ -65,7 +65,8 @@ const now = () => new Date().toISOString();
 function logEv(who, text, projectId) { DB.log.unshift({ id: nid('l'), ts: now(), who, text, projectId }); DB.log = DB.log.slice(0, 300); }
 
 // ---------- hitungan proyek ----------
-function contractOf(p) { return p.divisions.reduce((a, d) => a + d.rap, 0) * (1 + p.buk / 100); }
+function voSum(p) { return (p.vos || []).filter((v) => v.status === 'ok').reduce((a, v) => a + v.price, 0); }
+function contractOf(p) { return p.divisions.reduce((a, d) => a + d.rap, 0) * (1 + p.buk / 100) + voSum(p); }
 function rapOf(p) { return p.divisions.reduce((a, d) => a + d.rap, 0); }
 function progressOf(p, key) { const rap = rapOf(p); return rap ? p.divisions.reduce((a, d) => a + d.rap * (d[key] || 0) / 100, 0) / rap : 0; }
 function summary(p) {
@@ -79,9 +80,9 @@ function summary(p) {
   const labaAkhir = K - rap - extra - K * cut;
   const floorBuk = Math.ceil((1 / (1 - cut) - 1) * 100);
   const net = (K - rap - K * cut) / K;
-  const zone = p.buk < floorBuk ? 'Rugi' : net < 0.05 ? 'Tipis' : p.buk > 20 ? 'Di atas wajar' : 'Aman';
+  const zone = p.buk < floorBuk ? 'Rugi' : net < 0.05 ? 'Tipis' : p.buk > (p.offer ? 25 : 20) ? 'Di atas wajar' : 'Aman';  // proyek dari Konsultan: margin sudah memuat cadangan risiko
   const pendingN = DB.notas.filter((n) => n.projectId === p.id && (n.status === 'pending' || n.status === 'owner')).length;
-  return { contract: K, rap, progress: prog, verified: vprog, spent: approved, overMarket: extra, kas, labaAkhir, labaPct: K ? labaAkhir / K : 0, net, zone, floorBuk, revenue: vprog * K, pendingN,
+  return { contract: K, vo: voSum(p), rap, progress: prog, verified: vprog, spent: approved, overMarket: extra, kas, labaAkhir, labaPct: K ? labaAkhir / K : 0, net, zone, floorBuk, revenue: vprog * K, pendingN,
     receivable: DB.invoices.filter((i) => i.projectId === p.id && i.status === 'sent').reduce((a, i) => a + i.transfer, 0) };
 }
 function invoiceCalc(p, termin, progressPct) {
@@ -115,7 +116,7 @@ const json = (res, code, body) => { res.writeHead(code, { 'Content-Type': 'appli
 const bad = (res, msg, code = 400) => json(res, code, { error: msg });
 const projectFor = (u, id) => { const p = DB.projects.find((x) => x.id === id); if (!p) return null; if (u.role === 'mandor' && p.mandor !== u.role) return null; return p; };
 const canMoney = (u) => u.role === 'owner' || u.role === 'admin';
-const viewProject = (u, p) => { const base = { id: p.id, name: p.name, client: p.client, address: p.address, lat: p.lat, lng: p.lng, status: p.status, start: p.start, divisions: p.divisions.map((d) => ({ id: d.id, name: d.name, progress: d.progress, verified: d.verified })) }; if (!canMoney(u)) return base; return Object.assign(base, { buk: p.buk, dp: p.dp, retensi: p.retensi, months: p.months, termins: p.termins, kasAwal: p.kasAwal, divisions: p.divisions, summary: summary(p) }); };
+const viewProject = (u, p) => { const base = { id: p.id, name: p.name, client: p.client, address: p.address, lat: p.lat, lng: p.lng, status: p.status, start: p.start, divisions: p.divisions.map((d) => ({ id: d.id, name: d.name, progress: d.progress, verified: d.verified })) }; if (!canMoney(u)) return base; return Object.assign(base, { buk: p.buk, dp: p.dp, retensi: p.retensi, months: p.months, termins: p.termins, kasAwal: p.kasAwal, divisions: p.divisions, vos: p.vos || [], offer: p.offer || null, summary: summary(p) }); };
 
 const routes = {
   'POST /api/login': (req, res, b) => {
@@ -198,8 +199,23 @@ const routes = {
     ['name', 'client', 'address', 'status', 'start'].forEach((k) => { if (b[k] != null) p[k] = String(b[k]).slice(0, 200); });
     ['lat', 'lng', 'kasAwal', 'months', 'dp', 'retensi'].forEach((k) => { if (b[k] != null && b[k] !== '') p[k] = Number(b[k]); });
     if (b.buk != null) { const floorBuk = Math.ceil((1 / (1 - (CFG.overhead + CFG.bunga + CFG.pph)) - 1) * 100); p.buk = Math.max(floorBuk, Math.min(25, Number(b.buk) || floorBuk)); }
+    if (b.offer && typeof b.offer === 'object') p.offer = b.offer;
     if (Array.isArray(b.divisions)) p.divisions = b.divisions.map((d, i) => ({ id: i, name: String(d.name || '').slice(0, 80), rap: Math.max(0, Number(d.rap) || 0), progress: Number(d.progress) || 0, verified: Number(d.verified) || 0 }));
     logEv(u.name, 'Simpan RAB ' + p.name + ' · BUK ' + p.buk + '%', p.id); saveDB(); json(res, 200, viewProject(u, p));
+  },
+  'POST /api/vo': (req, res, b, u) => {
+    if (!canMoney(u)) return bad(res, 'Tidak berhak', 403);
+    const p = DB.projects.find((x) => x.id === b.projectId); if (!p) return bad(res, 'Proyek tidak ada');
+    const cost = Math.round(Number(b.cost) || 0); if (cost <= 0) return bad(res, 'Biaya harus diisi');
+    const margin = Math.max(0, Math.min(50, Number(b.margin) || 0)), kind = b.kind === 'minus' ? 'minus' : 'plus';
+    const v = { id: nid('v'), ts: now(), desc: String(b.desc || '').slice(0, 200), kind, cost, margin, price: Math.round(cost * (1 + margin / 100)) * (kind === 'minus' ? -1 : 1), status: b.status === 'risk' ? 'risk' : 'wait', by: u.name };
+    p.vos = (p.vos || []).concat([v]); logEv(u.name, (kind === 'plus' ? 'Pekerjaan tambah: ' : 'Pekerjaan kurang: ') + v.desc + ' Rp ' + Math.abs(v.price).toLocaleString('id-ID'), p.id); saveDB(); json(res, 200, v);
+  },
+  'POST /api/vo/status': (req, res, b, u) => {
+    if (!canMoney(u)) return bad(res, 'Tidak berhak', 403);
+    const p = DB.projects.find((x) => (x.vos || []).some((v) => v.id === b.id)); if (!p) return bad(res, 'Tidak ada');
+    const v = p.vos.find((x) => x.id === b.id); v.status = ['ok', 'wait', 'risk', 'void'].includes(b.status) ? b.status : v.status; if (v.status === 'ok') { v.okBy = String(b.by || '').slice(0, 80); v.okAt = now(); }
+    logEv(u.name, 'Tambah-kurang "' + v.desc + '" → ' + ({ ok: 'disetujui klien', wait: 'menunggu klien', risk: 'dikerjakan tanpa persetujuan', void: 'dibatalkan' })[v.status], p.id); saveDB(); json(res, 200, v);
   },
   'POST /api/invoice': (req, res, b, u) => {
     if (!canMoney(u)) return bad(res, 'Tidak berhak', 403);

@@ -4,6 +4,7 @@ const fs = require('fs'), path = require('path');
 const R = path.join(__dirname, '..');
 const css = fs.readFileSync(path.join(R, 'public/style.css'), 'utf8');
 const api = fs.readFileSync(path.join(__dirname, 'api-artifact.js'), 'utf8');
+const kon = fs.readFileSync(path.join(R, 'public/konsultan.js'), 'utf8');
 const app = fs.readFileSync(path.join(R, 'public/app.js'), 'utf8');
 const html = `<!doctype html>
 <html lang="id">
@@ -23,6 +24,9 @@ ${css}
 <div id="toast" class="toast" hidden></div>
 <script>
 ${api.replace(/<\/script/gi, '<\\/script')}
+</script>
+<script>
+${kon.replace(/<\/script/gi, '<\\/script')}
 </script>
 <script>
 ${app.replace(/<\/script/gi, '<\\/script')}

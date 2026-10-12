@@ -20,7 +20,7 @@ window.API = (() => {
   const changed = () => { if (window.onDataChange) window.onDataChange(); };
 
   // ---- hitungan (sama dengan server.js) ----
-  const rapOf = (p) => p.divisions.reduce((a, d) => a + d.rap, 0), contractOf = (p) => rapOf(p) * (1 + p.buk / 100);
+  const rapOf = (p) => p.divisions.reduce((a, d) => a + d.rap, 0), voSum = (p) => (p.vos || []).filter((v) => v.status === 'ok').reduce((a, v) => a + v.price, 0), contractOf = (p) => rapOf(p) * (1 + p.buk / 100) + voSum(p);
   const progressOf = (p, k) => { const r = rapOf(p); return r ? p.divisions.reduce((a, d) => a + d.rap * (d[k] || 0) / 100, 0) / r : 0; };
   function summary(p) {
     const C = CFG(), K = contractOf(p), rap = rapOf(p), cut = C.overhead + C.bunga + C.pph, prog = progressOf(p, 'progress'), vprog = progressOf(p, 'verified');
@@ -28,8 +28,8 @@ window.API = (() => {
     const paid = D.invoices.filter((i) => i.projectId === p.id && i.status === 'paid'), dpIn = paid.find((i) => i.termin === 0) ? K * p.dp * (1 - C.pph) : 0;
     const kas = (p.kasAwal || 0) + dpIn + paid.filter((i) => i.termin > 0).reduce((a, i) => a + i.net - i.pph, 0) - approved;
     const labaAkhir = K - rap - extra - K * cut, floorBuk = Math.ceil((1 / (1 - cut) - 1) * 100), net = K ? (K - rap - K * cut) / K : 0;
-    const zone = p.buk < floorBuk ? 'Rugi' : net < 0.05 ? 'Tipis' : p.buk > 20 ? 'Di atas wajar' : 'Aman';
-    return { contract: K, rap, progress: prog, verified: vprog, spent: approved, overMarket: extra, kas, labaAkhir, labaPct: K ? labaAkhir / K : 0, net, zone, floorBuk, revenue: vprog * K, pendingN: D.notas.filter((n) => n.projectId === p.id && (n.status === 'pending' || n.status === 'owner')).length, receivable: D.invoices.filter((i) => i.projectId === p.id && i.status === 'sent').reduce((a, i) => a + i.transfer, 0) };
+    const zone = p.buk < floorBuk ? 'Rugi' : net < 0.05 ? 'Tipis' : p.buk > (p.offer ? 25 : 20) ? 'Di atas wajar' : 'Aman';  // proyek dari Konsultan: margin sudah memuat cadangan risiko
+    return { contract: K, vo: voSum(p), rap, progress: prog, verified: vprog, spent: approved, overMarket: extra, kas, labaAkhir, labaPct: K ? labaAkhir / K : 0, net, zone, floorBuk, revenue: vprog * K, pendingN: D.notas.filter((n) => n.projectId === p.id && (n.status === 'pending' || n.status === 'owner')).length, receivable: D.invoices.filter((i) => i.projectId === p.id && i.status === 'sent').reduce((a, i) => a + i.transfer, 0) };
   }
   function invoiceCalc(p, termin, progressPct) {
     const C = CFG(), K = contractOf(p);
@@ -41,7 +41,7 @@ window.API = (() => {
   const canMoney = () => user && user.role !== 'mandor';
   const myProjects = () => D.projects.filter((p) => !user || user.role !== 'mandor' || (p.mandor || 'mandor') === 'mandor');
   const projectFor = (id) => myProjects().find((p) => p.id === id) || fail('Proyek tidak ditemukan');
-  const viewProject = (p) => { const base = { id: p.id, name: p.name, client: p.client, address: p.address, lat: p.lat, lng: p.lng, status: p.status, start: p.start, divisions: p.divisions.map((d) => ({ id: d.id, name: d.name, progress: d.progress, verified: d.verified })) }; return canMoney() ? Object.assign(base, { buk: p.buk, dp: p.dp, retensi: p.retensi, termins: p.termins, kasAwal: p.kasAwal, divisions: p.divisions, summary: summary(p) }) : base; };
+  const viewProject = (p) => { const base = { id: p.id, name: p.name, client: p.client, address: p.address, lat: p.lat, lng: p.lng, status: p.status, start: p.start, divisions: p.divisions.map((d) => ({ id: d.id, name: d.name, progress: d.progress, verified: d.verified })) }; return canMoney() ? Object.assign(base, { buk: p.buk, dp: p.dp, retensi: p.retensi, termins: p.termins, kasAwal: p.kasAwal, divisions: p.divisions, vos: p.vos || [], offer: p.offer || null, summary: summary(p) }) : base; };
 
   function subscribe() {
     dbh.doc('app/config').onSnapshot((s) => { D.config = s.exists ? s.data() : null; D.ready = true; changed(); }, (e) => console.error(e));
@@ -109,8 +109,20 @@ window.API = (() => {
       ['lat', 'lng', 'kasAwal'].forEach((k) => { if (b[k] != null && b[k] !== '') p[k] = Number(b[k]); });
       const C = CFG(), floorBuk = Math.ceil((1 / (1 - (C.overhead + C.bunga + C.pph)) - 1) * 100);
       if (b.buk != null) p.buk = Math.max(floorBuk, Math.min(25, Number(b.buk) || floorBuk));
+      if (b.offer && typeof b.offer === 'object') p.offer = b.offer;
       if (Array.isArray(b.divisions)) p.divisions = b.divisions.map((d, i) => ({ id: i, name: String(d.name || '').slice(0, 80), rap: Math.max(0, Number(d.rap) || 0), progress: Number(d.progress) || 0, verified: Number(d.verified) || 0 }));
       await put('projects', p.id, p); await logEv('Simpan RAB ' + p.name + ' · BUK ' + p.buk + '%', p.id); return viewProject(p);
+    },
+    async vo(b) {
+      const p = D.projects.find((x) => x.id === b.projectId) || fail('Proyek tidak ada'); const cost = Math.round(Number(b.cost) || 0); if (cost <= 0) fail('Biaya harus diisi');
+      const margin = Math.max(0, Math.min(50, Number(b.margin) || 0)), kind = b.kind === 'minus' ? 'minus' : 'plus';
+      const v = { id: nid('v'), ts: now(), desc: String(b.desc || '').slice(0, 200), kind, cost, margin, price: Math.round(cost * (1 + margin / 100)) * (kind === 'minus' ? -1 : 1), status: b.status === 'risk' ? 'risk' : 'wait', by: user.name };
+      await dbh.doc('projects/' + p.id).update({ vos: (p.vos || []).concat([v]) }); await logEv((kind === 'plus' ? 'Pekerjaan tambah: ' : 'Pekerjaan kurang: ') + v.desc + ' ' + rp(v.price), p.id); return v;
+    },
+    async voStatus(id, status, by) {
+      const p = D.projects.find((x) => (x.vos || []).some((v) => v.id === id)) || fail('Tidak ada');
+      const vos = p.vos.map((v) => v.id === id ? Object.assign({}, v, { status }, status === 'ok' ? { okBy: String(by || ''), okAt: now() } : {}) : v); const v = vos.find((x) => x.id === id);
+      await dbh.doc('projects/' + p.id).update({ vos }); await logEv('Tambah-kurang "' + v.desc + '" → ' + ({ ok: 'disetujui klien', wait: 'menunggu klien', risk: 'dikerjakan tanpa persetujuan', void: 'dibatalkan' })[status], p.id);
     },
     async invoice(projectId, t) {
       const p = D.projects.find((x) => x.id === projectId) || fail('Proyek tidak ada');
