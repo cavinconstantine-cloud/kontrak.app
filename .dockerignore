@@ -1,0 +1,7 @@
+data/*
+!data/.keep
+uploads/*
+!uploads/.keep
+node_modules
+*.log
+.git

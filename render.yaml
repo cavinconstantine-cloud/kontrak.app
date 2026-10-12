@@ -1,0 +1,19 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Pasang: Render dashboard → New → Blueprint → pilih repo ini.
+services:
+  - type: web
+    name: buku-proyek
+    runtime: node
+    plan: starter            # disk tetap butuh paket berbayar (± US$7/bulan); paket free tidak menyimpan data setelah restart
+    buildCommand: "echo no build"
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: STORAGE_DIR
+        value: /var/data
+      - key: NODE_VERSION
+        value: "22"
+    disk:
+      name: buku-proyek-data
+      mountPath: /var/data
+      sizeGB: 1

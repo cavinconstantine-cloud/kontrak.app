@@ -7,8 +7,10 @@ const path = require('path');
 const crypto = require('crypto');
 
 const ROOT = __dirname;
-const DATA = path.join(ROOT, 'data');
-const UPLOADS = path.join(ROOT, 'uploads');
+// STORAGE_DIR: folder penyimpanan tetap (disk/volume di hosting). Default: folder aplikasi.
+const STORE = process.env.STORAGE_DIR ? path.resolve(process.env.STORAGE_DIR) : ROOT;
+const DATA = path.join(STORE, 'data');
+const UPLOADS = path.join(STORE, 'uploads');
 const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(DATA, 'db.json');
 const CFG_FILE = path.join(DATA, 'config.json');
@@ -122,7 +124,8 @@ const routes = {
     const tok = crypto.randomBytes(24).toString('hex');
     const user = { role: b.role, name: u.name };
     sessions.set(tok, user);
-    res.setHeader('Set-Cookie', 'bp=' + tok + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000');
+    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    res.setHeader('Set-Cookie', 'bp=' + tok + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000' + secure);
     json(res, 200, { user });
   },
   'POST /api/logout': (req, res) => { sessions.delete(parseCookies(req).bp); res.setHeader('Set-Cookie', 'bp=; Path=/; Max-Age=0'); json(res, 200, { ok: true }); },

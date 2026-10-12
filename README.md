@@ -49,6 +49,22 @@ atau dari menu **Menu → Ganti password** di aplikasi.
 - Setujui nota di atas Rp 10 Jt.
 - Detail proyek, progres, laporan keuangan.
 
+## Pasang di internet (HTTPS, bisa dibuka mandor dari HP)
+
+Kamera dan GPS di HP hanya jalan lewat HTTPS, jadi untuk dipakai di lapangan aplikasi harus di-hosting. Tiga pilihan, semua sudah ada file konfigurasinya di repo ini:
+
+| Hosting | Cara | Biaya |
+|---|---|---|
+| **Render** (paling mudah) | Dashboard → New → **Blueprint** → pilih repo `kontrak.app` → Apply. `render.yaml` sudah mengatur semuanya termasuk disk 1 GB. | ± US$7/bulan (paket free tidak punya disk, data hilang saat restart) |
+| **Railway** | New Project → Deploy from GitHub → pilih repo. Lalu di service: Variables → `STORAGE_DIR=/storage`; Volumes → tambah volume, mount `/storage`. | mulai ± US$5/bulan |
+| **Fly.io** | `fly launch --copy-config --no-deploy` → `fly volumes create buku_data --size 1` → `fly deploy`. | free tier cukup untuk 1 mesin kecil |
+
+Setelah hidup, buka alamat yang diberikan hosting (mis. `https://buku-proyek.onrender.com`), masuk sebagai Owner, **langsung ganti ketiga password** dari Menu.
+
+Variabel lingkungan yang dipakai server:
+- `PORT` — port (hosting mengisinya sendiri).
+- `STORAGE_DIR` — folder penyimpanan tetap untuk `data/` dan `uploads/`. Wajib menunjuk ke disk/volume, kalau tidak data hilang saat aplikasi di-restart.
+
 ## Data
 
 Semua data ada di folder `data/` (file JSON) dan foto di `uploads/`. Cadangkan dua folder itu. Hapus `data/db.json` untuk mulai dari kosong (proyek contoh "Ruko 3 Lantai" akan dibuat lagi).
