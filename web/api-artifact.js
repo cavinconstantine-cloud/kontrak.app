@@ -112,7 +112,7 @@ window.API = (() => {
       const C = CFG(), floorBuk = Math.ceil((1 / (1 - (C.overhead + C.bunga + C.pph)) - 1) * 100);
       if (b.buk != null) p.buk = Math.max(floorBuk, Math.min(25, Number(b.buk) || floorBuk));
       if (b.offer && typeof b.offer === 'object') p.offer = b.offer;
-      if (Array.isArray(b.struct)) p.struct = b.struct.slice(0, 40).map((e) => ({ el: String(e.el), mutu: String(e.mutu), met: String(e.met), baja: String(e.baja || 'bjts'), vol: Number(e.vol) || 0, ratio: e.ratio === '' || e.ratio == null ? null : Number(e.ratio), slab: e.slab === 'bondek' ? 'bondek' : 'konv' }));
+      if (Array.isArray(b.struct)) p.struct = b.struct.slice(0, 160).map((e) => ({ grp: e.grp ? String(e.grp).slice(0, 60) : null, el: String(e.el), mutu: String(e.mutu), met: String(e.met), baja: String(e.baja || 'bjts'), vol: Number(e.vol) || 0, ratio: e.ratio === '' || e.ratio == null ? null : Number(e.ratio), slab: e.slab === 'bondek' ? 'bondek' : 'konv' }));
       if (b.structPerCor != null) p.structPerCor = Number(b.structPerCor) || 20;
       if (Array.isArray(b.interior)) p.interior = b.interior.slice(0, 40).map((r) => ({ key: String(r.key), by: ['k', 'j', 'x'].includes(r.by) ? r.by : 'k', qty: Number(r.qty) || 0 }));
       ['area', 'lantai'].forEach((k) => { if (b[k] != null && b[k] !== '') p[k] = Number(b[k]); });

@@ -55,6 +55,23 @@ window.KONSULTAN = (() => {
     const kategori = js.includes('renov_besar') ? 'renov_besar' : js.includes('renov_sedang') ? 'renov_sedang' : js.length && js.every((j) => j === 'renov_kecil') ? 'renov_kecil' : 'baru';
     return Object.assign({}, s, { lantai: Math.max(...fl.map(ltOf)), scope: scope.length ? scope : ['arsitektur'], kategori });
   }
+  // elemen beton per lantai/area (dipakai RAB → Struktur beton): pondasi hanya di lantai 1, dak = balok + plat atap
+  function structFloors(floors, nL, cor) {
+    const out = [], r1 = (x) => Math.round(x * 10) / 10;
+    (floors || []).filter((f) => Number(f.luas) > 0).forEach((f) => {
+      const js = (f.keys || jl(f)).filter((k) => FJ[k]), Js = js.map((k) => FJ[k]), L = Number(f.luas), LT = Number(f.n || f.lt) || 1, grp = 'Lantai ' + LT + (f.nama ? ' · ' + f.nama : '');
+      if (!Js.some((J) => J[2].includes('struktur'))) return;
+      const pf = LT === 1 ? Math.max(...Js.map((J) => (J[2].includes('struktur') ? J[5] : 0))) : js.includes('renov_besar') ? 0.25 : 0;
+      const atas = Math.max(0, ...js.filter((k) => k !== 'dak').map((k) => FJ[k][6] * FJ[k][3])), acc = {};
+      const put = (list, keep, fct) => list.filter((e) => keep.includes(e.el)).forEach((e) => { const v = e.vol * fct; if (acc[e.el]) acc[e.el].vol += v; else acc[e.el] = Object.assign({}, e, { vol: v, grp }); });
+      if (pf) put(BETON.defaults(L * nL, nL, cor), pf === 1 ? ['pondasi', 'sloof', 'kerja'] : ['pondasi', 'sloof'], pf);
+      const up = BETON.defaults(L, nL, cor);
+      if (atas) put(up, ['kolom', 'balok', 'plat', 'praktis'], atas);
+      if (js.includes('dak')) put(up, ['balok', 'plat'], 0.93);
+      Object.keys(acc).forEach((k) => { const e = acc[k]; e.vol = r1(e.vol); if (e.vol >= 0.1) out.push(e); });
+    });
+    return out;
+  }
   let MX = null, LAST = null;
   // ubah isian per lantai dari tampilan (input angka & tombol)
   function fl(i, k, v) {
@@ -120,7 +137,7 @@ window.KONSULTAN = (() => {
         const main = ['baru', 'renov_besar', 'renov_sedang', 'renov_kecil'].find((k) => js.includes(k)), J = main ? FJ[main] : null;
         if (J) WORKS.filter((x) => J[2].includes(x[2]) && x[2] !== 'struktur').forEach((x) => { const sc = SCOPES.find((z) => z[0] === x[2]); let m = 1; if (x[0] === 'atap') { if (LT !== topLt || dak) return; m *= (ATAP[s.atap] || ATAP.baja)[2] * 2; } put(x[0], x[1], L * base0 * J[3] * sc[3] * x[3] * m, x[5]); });
         if (f.int) WORKS.filter((x) => x[2] === 'interior').forEach((x) => { const fi = s.interiorBy === 'sipil' ? (x[0] === 'kitchen' ? 0 : 0.6) : INTBY[s.interiorBy][2]; put(x[0], x[1], L * base0 * 0.6 * x[3] * fi, x[5]); });
-        return { n: LT, nama: f.nama || '', jenis: nm, luas: L, v: sum, int: !!f.int, works: rw };
+        return { n: LT, nama: f.nama || '', jenis: nm, keys: js, luas: L, v: sum, int: !!f.int, works: rw };
       });
       const order = ['persiapan', 'pondasi', 'struktur', 'waterproof'].concat(WORKS.map((x) => x[0]).filter((k) => ['persiapan', 'pondasi', 'struktur'].indexOf(k) < 0));
       works = order.filter((k) => acc[k]).map((k) => Object.assign(acc[k], { flag: acc[k].lts.join(', ') + (k === 'pondasi' && s.tanah !== 'keras' ? ' · ' + TANAH[s.tanah][3] : '') + (k === 'atap' ? ' · ' + (ATAP[s.atap] || ATAP.baja)[0].toLowerCase() : '') }));
@@ -269,12 +286,12 @@ window.KONSULTAN = (() => {
       else if (w.key === 'kitchen' || w.key === 'dekor') { const d = divisions.find((x) => x.src === 'interior'); if (d) d.rap += Math.round(w.v * k); else divisions.push({ src: 'interior', name: 'Interior (lihat pembagian pekerjaan)', rap: Math.round(w.v * k) }); }
       else divisions.push({ name: w.label, rap: Math.round(w.v * k) });
     });
-    const struct = hasStruct && typeof BETON !== 'undefined' ? BETON.defaults(r.area, s.lantai, s.cor) : null;
+    const struct = hasStruct && typeof BETON !== 'undefined' ? (r.floors ? structFloors(r.floors, s.lantai, s.cor) : BETON.defaults(r.area, s.lantai, s.cor)) : null;
     let interior = null;
     if (hasInt && typeof INTERIOR !== 'undefined') { const a = r.area, q = { kitchen: Math.round(a / 25), lemari: Math.round(a / 20), wallpaper: Math.round(a * 0.3), backdrop: Math.max(1, Math.round(a / 60)), lampu: Math.round(a / 15), stop: Math.round(a / 20), air: Math.max(1, Math.round(a / 60)) }; interior = INTERIOR.defaults(s.interiorBy).map((x) => Object.assign(x, { qty: q[x.key] || 0 })); }
     const rapSum = divisions.reduce((a, d) => a + d.rap, 0);
     const buk = Math.max(9, Math.min(25, Math.round((t.Pr * 1e6 / rapSum - 1) * 100)));
-    return { name: nama, client: klien, status: 'penawaran', buk, kasAwal: Math.round(s.kas * 1e6), divisions, struct, structPerCor: Math.max(5, Math.round(r.area * 0.22 / Math.max(1, s.lantai * 2))), interior, area: r.area, lantai: s.lantai, offer: { cor: s.cor, atap: s.atap, floors: r.floors ? r.floors.map((f) => ({ n: f.n, nama: f.nama, jenis: f.jenis, luas: f.luas, int: f.int, biaya: Math.round(f.v * 1e6) })) : null, interiorBy: s.interiorBy, kategori: s.kategori, type: s.type, area: r.area, qual: s.qual, scope: s.scope, tukang: s.tukang, klien: s.klien, bayar: s.bayar, harga: Math.round(t.Pr * 1e6), floor: Math.round(r.floorP * 1e6), bersaing: Math.round(r.compete.Pr * 1e6), aman: Math.round(r.safe.Pr * 1e6), terms: r.terms.map((x) => x[0]), risks: r.risks.map((x) => x[0]), ts: new Date().toISOString() } };
+    return { name: nama, client: klien, status: 'penawaran', buk, kasAwal: Math.round(s.kas * 1e6), divisions, struct, structPerCor: Math.max(5, Math.round(r.area * 0.22 / Math.max(1, s.lantai * 2))), interior, area: r.area, lantai: s.lantai, offer: { cor: s.cor, atap: s.atap, floors: r.floors ? r.floors.map((f) => ({ n: f.n, nama: f.nama, keys: f.keys, jenis: f.jenis, luas: f.luas, int: f.int, biaya: Math.round(f.v * 1e6) })) : null, interiorBy: s.interiorBy, kategori: s.kategori, type: s.type, area: r.area, qual: s.qual, scope: s.scope, tukang: s.tukang, klien: s.klien, bayar: s.bayar, harga: Math.round(t.Pr * 1e6), floor: Math.round(r.floorP * 1e6), bersaing: Math.round(r.compete.Pr * 1e6), aman: Math.round(r.safe.Pr * 1e6), terms: r.terms.map((x) => x[0]), risks: r.risks.map((x) => x[0]), ts: new Date().toISOString() } };
   }
-  return { fl, FJ, defaults, calc, view, toProject, LABELS, set: null, save: null };
+  return { fl, FJ, structFloors, defaults, calc, view, toProject, LABELS, set: null, save: null };
 })();
