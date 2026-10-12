@@ -105,9 +105,9 @@ window.KONSULTAN = (() => {
       const acc = {}, add = (key, label, v, matShare, lt, extra) => { if (v <= 0) return; const w = acc[key] || (acc[key] = { key, label, v: 0, flag: '', lts: [], vol: VOL[key] || '1 ls', matShare }); w.v += v; if (!w.lts.includes(lt)) w.lts.push(lt); if (extra) w.galian = (w.galian || 0) + extra; };
       const topLt = s.floors.reduce((a, f, i) => (Number(f.luas) > 0 ? Math.max(a, ltOf(f, i)) : a), 0);  // atap genteng hanya di lantai teratas (dak = tanpa atap genteng)
       floorsOut = s.floors.map((f, i) => {
-        const LT = ltOf(f, i), js = jl(f), Js = js.map((k) => FJ[k]), L = Number(f.luas) || 0, lt = 'Lt ' + LT, nm = js.map((k) => FJ[k][0]).join(' + '); let sum = 0;
+        const LT = ltOf(f, i), js = jl(f), Js = js.map((k) => FJ[k]), L = Number(f.luas) || 0, lt = 'Lt ' + LT, nm = js.map((k) => FJ[k][0]).join(' + '), rw = []; let sum = 0;
         if (L <= 0) return { n: LT, nama: f.nama || '', jenis: nm, luas: 0, v: 0, int: false };
-        const put = (key, label, v, ms, extra) => { const val = v * gm * tk(ms); add(key, label, val, ms, lt, extra != null ? extra * gm * tk(ms) : null); sum += val; };
+        const put = (key, label, v, ms, extra) => { const val = v * gm * tk(ms); const ex = extra != null ? extra * gm * tk(ms) : null; add(key, label, val, ms, lt, ex); const w = rw.find((x) => x.key === key); if (w) { w.v += val; if (ex) w.galian = (w.galian || 0) + ex; } else rw.push({ key, label, v: val, galian: ex || 0 }); sum += val; };
         const hasStr = Js.some((J) => J[2].includes('struktur')), bongkar = Math.max(...Js.map((J) => J[4])), dak = js.includes('dak');
         if (hasStr || bongkar > 1) put('persiapan', js.some((k) => k.indexOf('renov') === 0) ? 'Bongkar & persiapan' : 'Persiapan', L * 0.1 * bongkar, 0.3);
         if (hasStr) {
@@ -120,7 +120,7 @@ window.KONSULTAN = (() => {
         const main = ['baru', 'renov_besar', 'renov_sedang', 'renov_kecil'].find((k) => js.includes(k)), J = main ? FJ[main] : null;
         if (J) WORKS.filter((x) => J[2].includes(x[2]) && x[2] !== 'struktur').forEach((x) => { const sc = SCOPES.find((z) => z[0] === x[2]); let m = 1; if (x[0] === 'atap') { if (LT !== topLt || dak) return; m *= (ATAP[s.atap] || ATAP.baja)[2] * 2; } put(x[0], x[1], L * base0 * J[3] * sc[3] * x[3] * m, x[5]); });
         if (f.int) WORKS.filter((x) => x[2] === 'interior').forEach((x) => { const fi = s.interiorBy === 'sipil' ? (x[0] === 'kitchen' ? 0 : 0.6) : INTBY[s.interiorBy][2]; put(x[0], x[1], L * base0 * 0.6 * x[3] * fi, x[5]); });
-        return { n: LT, nama: f.nama || '', jenis: nm, luas: L, v: sum, int: !!f.int };
+        return { n: LT, nama: f.nama || '', jenis: nm, luas: L, v: sum, int: !!f.int, works: rw };
       });
       const order = ['persiapan', 'pondasi', 'struktur', 'waterproof'].concat(WORKS.map((x) => x[0]).filter((k) => ['persiapan', 'pondasi', 'struktur'].indexOf(k) < 0));
       works = order.filter((k) => acc[k]).map((k) => Object.assign(acc[k], { flag: acc[k].lts.join(', ') + (k === 'pondasi' && s.tanah !== 'keras' ? ' · ' + TANAH[s.tanah][3] : '') + (k === 'atap' ? ' · ' + (ATAP[s.atap] || ATAP.baja)[0].toLowerCase() : '') }));
@@ -252,7 +252,18 @@ window.KONSULTAN = (() => {
     const s = norm(s0), r = calc(s0), t = r.target;
     const k = 1e6 * (1 + r.risiko / 100), divisions = [];  // cadangan risiko dimasukkan ke RAP
     const hasStruct = r.works.some((w) => w.key === 'struktur'), hasInt = r.works.some((w) => w.key === 'kitchen' || w.key === 'dekor');
-    r.works.forEach((w) => {
+    if (r.floors) r.floors.filter((f) => f.luas > 0).forEach((f) => {
+      // RAB per lantai/area: tiap pekerjaan diberi grup "Lantai N · nama area"
+      const grp = 'Lantai ' + f.n + (f.nama ? ' · ' + f.nama : ''), push = (d) => { const o = divisions.find((x) => x.grp === grp && (d.src ? x.src === d.src : x.name === d.name)); if (o) o.rap += d.rap; else if (d.rap > 0) divisions.push(Object.assign({ grp }, d)); };
+      f.works.forEach((w) => {
+        if (w.key === 'pondasi') { push({ name: 'Galian & urugan tanah', rap: Math.round(w.galian * k) }); push({ src: 'struct', name: 'Struktur beton', rap: Math.round((w.v - w.galian) * k) }); }
+        else if (w.key === 'struktur') push({ src: 'struct', name: 'Struktur beton', rap: Math.round(w.v * k) });
+        else if (w.key === 'kitchen' || w.key === 'dekor') push({ src: 'interior', name: 'Interior', rap: Math.round(w.v * k) });
+        else push({ name: w.label, rap: Math.round(w.v * k) });
+      });
+    });
+    if (r.floors) r.works.filter((w) => w.key === 'mob').forEach((w) => divisions.push({ grp: 'Umum', name: w.label, rap: Math.round(w.v * k) }));
+    if (!r.floors) r.works.forEach((w) => {
       if (w.key === 'pondasi' && hasStruct) divisions.push({ name: 'Galian & urugan tanah', rap: Math.round((w.galian != null ? w.galian : w.v * 0.35) * k) });
       else if (w.key === 'struktur') divisions.push({ src: 'struct', name: 'Struktur beton (rincian per elemen)', rap: Math.round((w.v + (() => { const f = r.works.find((x) => x.key === 'pondasi'); return f ? f.v - (f.galian != null ? f.galian : f.v * 0.35) : 0; })()) * k) });
       else if (w.key === 'kitchen' || w.key === 'dekor') { const d = divisions.find((x) => x.src === 'interior'); if (d) d.rap += Math.round(w.v * k); else divisions.push({ src: 'interior', name: 'Interior (lihat pembagian pekerjaan)', rap: Math.round(w.v * k) }); }

@@ -166,7 +166,7 @@ const routes = {
     const items = (b.items || []).map((it) => ({ div: Number(it.div), pct: Math.max(0, Math.min(100, Number(it.pct) || 0)) })).filter((it) => p.divisions[it.div]);
     items.forEach((it) => { p.divisions[it.div].progress = it.pct; });
     const rec = { id: nid('r'), projectId: p.id, who: u.role, name: u.name, ts: now(), items, note: String(b.note || '').slice(0, 500), photos, verified: false };
-    DB.reports.push(rec); logEv(u.name, 'Lapor progres: ' + items.map((it) => p.divisions[it.div].name + ' ' + it.pct + '%').join(', '), p.id); saveDB(); json(res, 200, rec);
+    DB.reports.push(rec); logEv(u.name, 'Lapor progres: ' + items.map((it) => (p.divisions[it.div].grp ? p.divisions[it.div].grp + ' · ' : '') + p.divisions[it.div].name + ' ' + it.pct + '%').join(', '), p.id); saveDB(); json(res, 200, rec);
   },
   'POST /api/nota': (req, res, b, u) => {
     const p = projectFor(u, b.projectId); if (!p) return bad(res, 'Proyek tidak ditemukan');
@@ -208,7 +208,7 @@ const routes = {
     if (b.structPerCor != null) p.structPerCor = Number(b.structPerCor) || 20;
     if (Array.isArray(b.interior)) p.interior = b.interior.slice(0, 40).map((r) => ({ key: String(r.key), by: ['k', 'j', 'x'].includes(r.by) ? r.by : 'k', qty: Number(r.qty) || 0 }));
     ['area', 'lantai'].forEach((k) => { if (b[k] != null && b[k] !== '') p[k] = Number(b[k]); });
-    if (Array.isArray(b.divisions)) p.divisions = b.divisions.map((d, i) => ({ id: i, src: d.src || undefined, name: String(d.name || '').slice(0, 80), rap: Math.max(0, Number(d.rap) || 0), progress: Number(d.progress) || 0, verified: Number(d.verified) || 0 }));
+    if (Array.isArray(b.divisions)) p.divisions = b.divisions.map((d, i) => ({ id: i, src: d.src || undefined, grp: d.grp ? String(d.grp).slice(0, 60) : undefined, name: String(d.name || '').slice(0, 80), rap: Math.max(0, Number(d.rap) || 0), progress: Number(d.progress) || 0, verified: Number(d.verified) || 0 }));
     logEv(u.name, 'Simpan RAB ' + p.name + ' · BUK ' + p.buk + '%', p.id); saveDB(); json(res, 200, viewProject(u, p));
   },
   'POST /api/vo': (req, res, b, u) => {
@@ -251,8 +251,8 @@ const routes = {
   'GET /api/export': (req, res, b, u) => {
     if (!canMoney(u)) return bad(res, 'Tidak berhak', 403);
     const p = DB.projects.find((x) => x.id === (b.projectId || DB.projects[0].id)); if (!p) return bad(res, 'Proyek tidak ada');
-    const S = summary(p), lines = [['Buku Proyek — ' + p.name], ['Klien', p.client], [], ['Pekerjaan', 'RAP', 'Harga ke klien', 'Progres lapor', 'Progres verifikasi']];
-    p.divisions.forEach((d) => lines.push([d.name, d.rap, d.rap * (1 + p.buk / 100), d.progress + '%', d.verified + '%']));
+    const S = summary(p), lines = [['Buku Proyek — ' + p.name], ['Klien', p.client], [], ['Lantai / area', 'Pekerjaan', 'RAP', 'Harga ke klien', 'Progres lapor', 'Progres verifikasi']];
+    p.divisions.forEach((d) => lines.push([d.grp || '', d.name, d.rap, d.rap * (1 + p.buk / 100), d.progress + '%', d.verified + '%']));
     if (p.struct && p.struct.length) { const P2 = BETON.prices(DB.matrix); lines.push([], ['Struktur beton per elemen'], ['Elemen', 'Mutu', 'Cara cor', 'Besi', 'Volume m3', 'Biaya per m3', 'Jumlah']); p.struct.forEach((e) => { const r = BETON.element(e, P2, { volPerCor: p.structPerCor, lantai: p.lantai }); lines.push([BETON.EL[e.el][0], e.mutu, BETON.MET[e.met][0], (e.el === 'kerja' ? '-' : BETON.BAJA[e.baja] || ''), e.vol, r.perM3, r.total]); }); }
     if (p.interior && p.interior.length) { const ir = INTERIOR.calc(p.interior); lines.push([], ['Interior - termasuk'], ['Pekerjaan', 'Oleh', 'Jumlah', 'Satuan']); ir.termasuk.forEach((r) => lines.push([r.name, INTERIOR.BY[r.by][0] + ' (' + INTERIOR.BY[r.by][1] + ')', r.qty, r.unit])); lines.push([], ['Interior - TIDAK termasuk (oleh pemilik / vendor lain)']); ir.tidak.forEach((r) => lines.push([r.name, '', r.qty, r.unit])); }
     lines.push([], ['Nilai kontrak', S.contract], ['RAP', S.rap], ['Biaya disetujui', S.spent], ['Kas', S.kas], ['Pendapatan diakui (PSAK 72)', S.revenue], ['Proyeksi laba bersih', S.labaAkhir]);

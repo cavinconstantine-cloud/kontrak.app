@@ -81,7 +81,7 @@ window.API = (() => {
       const photos = []; for (const f of b.files.slice(0, 8)) photos.push(await upload(f));
       const items = b.items.filter((it) => p.divisions[it.div]), divisions = p.divisions.map((d) => Object.assign({}, d)); items.forEach((it) => { divisions[it.div].progress = it.pct; });
       const rec = { id: nid('r'), projectId: p.id, who: user.role, name: user.name, ts: now(), items, note: String(b.note || '').slice(0, 500), photos, verified: false };
-      await put('reports', rec.id, rec); await dbh.doc('projects/' + p.id).update({ divisions }); await logEv('Lapor progres: ' + items.map((it) => p.divisions[it.div].name + ' ' + it.pct + '%').join(', '), p.id); return rec;
+      await put('reports', rec.id, rec); await dbh.doc('projects/' + p.id).update({ divisions }); await logEv('Lapor progres: ' + items.map((it) => (p.divisions[it.div].grp ? p.divisions[it.div].grp + ' · ' : '') + p.divisions[it.div].name + ' ' + it.pct + '%').join(', '), p.id); return rec;
     },
     async nota(b) {
       const p = projectFor(b.projectId), amount = Math.round(Number(b.amount) || 0); if (amount <= 0 && b.type !== 'readymix') fail('Nominal harus diisi'); const photo = await upload(b.file);
@@ -116,7 +116,7 @@ window.API = (() => {
       if (b.structPerCor != null) p.structPerCor = Number(b.structPerCor) || 20;
       if (Array.isArray(b.interior)) p.interior = b.interior.slice(0, 40).map((r) => ({ key: String(r.key), by: ['k', 'j', 'x'].includes(r.by) ? r.by : 'k', qty: Number(r.qty) || 0 }));
       ['area', 'lantai'].forEach((k) => { if (b[k] != null && b[k] !== '') p[k] = Number(b[k]); });
-      if (Array.isArray(b.divisions)) p.divisions = b.divisions.map((d, i) => ({ id: i, src: d.src || null, name: String(d.name || '').slice(0, 80), rap: Math.max(0, Number(d.rap) || 0), progress: Number(d.progress) || 0, verified: Number(d.verified) || 0 }));
+      if (Array.isArray(b.divisions)) p.divisions = b.divisions.map((d, i) => ({ id: i, src: d.src || null, grp: d.grp ? String(d.grp).slice(0, 60) : null, name: String(d.name || '').slice(0, 80), rap: Math.max(0, Number(d.rap) || 0), progress: Number(d.progress) || 0, verified: Number(d.verified) || 0 }));
       await put('projects', p.id, p); await logEv('Simpan RAB ' + p.name + ' · BUK ' + p.buk + '%', p.id); return viewProject(p);
     },
     async vo(b) {
