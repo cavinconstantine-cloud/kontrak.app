@@ -2,7 +2,8 @@
 'use strict';
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
-let S = null, view = 'home', sel = {}, booting = true, bootError = '';
+let S = null, view = 'home', sel = {}, booting = true, bootError = '', navStack = [], navSkipPop = false;
+window.addEventListener('popstate', () => { if (navSkipPop) { navSkipPop = false; return; } if (S && S.user && view !== 'home') A.back(true); });
 
 /* ---------- util ---------- */
 const rp = (v) => (v < 0 ? '−' : '') + 'Rp ' + Math.round(Math.abs(v || 0)).toLocaleString('id-ID');
@@ -47,7 +48,12 @@ const I = {
 
 /* ---------- aksi ---------- */
 const A = {
-  go(v) { view = v; render(); window.scrollTo(0, 0); },
+  go(v) { if (v !== view) { navStack.push(view); try { history.pushState({ bp: 1 }, ''); } catch (e) {} } view = v; render(); window.scrollTo(0, 0); },
+  tab(v) { navStack = []; view = v; render(); window.scrollTo(0, 0); },
+  back(fromPop) {
+    if (view === 'penawaran' && sel.kon && sel.kon.step > 1) { sel.kon = Object.assign({}, sel.kon, { step: sel.kon.step - 1 }); render(); window.scrollTo(0, 0); return; }
+    view = navStack.pop() || 'home'; if (!fromPop) { navSkipPop = true; try { history.back(); } catch (e) { navSkipPop = false; } } render(); window.scrollTo(0, 0);
+  },
   pick(pid, v) { sel.pid = pid; if (v) view = v; render(); },
   setRole(r) { sel.role = r; render(); },
   login(e) { e.preventDefault(); const role = sel.role || 'owner', pw = $('#pw').value; run(async () => { const u = await API.login(role, pw); view = 'home'; return u; }, (u) => 'Selamat datang, ' + u.name); },
@@ -83,10 +89,11 @@ const bar = (x) => '<div class="bar"><span style="width:' + Math.round(Math.max(
 const card = (inner, cls) => '<div class="card ' + (cls || '') + '">' + inner + '</div>';
 const todo = (t, s, go, bg, ink) => '<button class="todo" onclick="' + go + '"><span class="ico" style="background:' + bg + ';color:' + ink + '"><i style="background:' + ink + '"></i></span><span class="col grow"><span class="t">' + esc(t) + '</span><span class="s">' + esc(s) + '</span></span>' + I.chev + '</button>';
 const hdrWho = (right) => '<div class="hdr"><div class="who"><span class="avatar">' + initials(S.user.name) + '</span><span class="col" style="gap:0"><span class="greet">' + salam() + '</span><span class="name">' + esc(S.user.name) + '</span></span></div>' + (right || '') + '</div>';
-const hdrTitle = (title, sub, right) => '<div class="hdr"><span class="col" style="gap:0"><span class="date">' + esc(sub || hariIni()) + '</span><span class="title">' + esc(title) + '</span></span>' + (right || '') + '</div>';
+const backBtn = () => view === 'home' ? '' : '<button class="iconbtn back" aria-label="Kembali" onclick="A.back()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>';
+const hdrTitle = (title, sub, right) => '<div class="hdr"><span class="row" style="gap:12px;min-width:0">' + backBtn() + '<span class="col" style="gap:0;min-width:0"><span class="date">' + esc(sub || hariIni()) + '</span><span class="title">' + esc(title) + '</span></span></span>' + (right || '') + '</div>';
 function navBar(items, fab) {
-  const b = (it) => '<button class="' + (view === it[0] ? 'on' : '') + '" onclick="A.go(\'' + it[0] + '\')">' + it[2] + esc(it[1]) + '</button>';
-  const f = '<button class="fab ' + (view === fab[0] ? 'on' : '') + '" aria-label="' + esc(fab[1]) + '" onclick="A.go(\'' + fab[0] + '\')">' + fab[2] + (fab[3] ? '<span class="badge">' + fab[3] + '</span>' : '') + '</button>';
+  const b = (it) => '<button class="' + (view === it[0] ? 'on' : '') + '" onclick="A.tab(\'' + it[0] + '\')">' + it[2] + esc(it[1]) + '</button>';
+  const f = '<button class="fab ' + (view === fab[0] ? 'on' : '') + '" aria-label="' + esc(fab[1]) + '" onclick="A.tab(\'' + fab[0] + '\')">' + fab[2] + (fab[3] ? '<span class="badge">' + fab[3] + '</span>' : '') + '</button>';
   return '<nav class="nav">' + b(items[0]) + b(items[1]) + f + b(items[2]) + b(items[3]) + '</nav>';
 }
 function projPicker() { if (S.projects.length < 2) return ''; return '<div class="chips">' + S.projects.map((p) => '<button class="chip ' + (p.id === sel.pid ? 'on' : '') + '" onclick="A.pick(\'' + p.id + '\')">' + esc(p.name) + '</button>').join('') + '</div>'; }
@@ -256,7 +263,7 @@ function render() {
   else if (role === 'admin') {
     const SECS = [['home', 'Dasbor', I.dash, 0], ['penawaran', 'Konsultan Penawaran', I.calc.replace('width="26" height="26"', 'width="22" height="22"'), 0], ['rab', 'RAB', I.rab, 0], ['tambahkurang', 'Tambah-kurang', I.send.replace('width="26" height="26"', 'width="22" height="22"'), S.projects.reduce((a, p) => a + (p.vos || []).filter((v) => v.status === 'risk').length, 0)], ['matrix', 'Matriks Harga', I.tag, 0], ['approve', 'Persetujuan biaya', I.nota, pendAdmin], ['lapangan', 'Laporan lapangan', I.field, S.reports.filter((r) => !r.verified).length], ['tagihan', 'Tagihan & Termin', I.termin, 0], ['menu', 'Pengaturan', I.user, 0]];
     body = { home: adminDash, penawaran: penawaranView, rab: rabView, tambahkurang: voView, matrix: matrixView, approve: approveView, lapangan: lapanganView, tagihan: tagihanView, menu: menuView }[view] || adminDash;
-    const side = '<nav class="side"><div class="brand"><span class="logo">BP</span><span class="col" style="gap:0"><b style="font-size:15px">Buku Proyek</b><span class="tiny" style="color:#A9C7B8">Admin – Finance</span></span></div>' + SECS.map((x) => '<button class="' + (view === x[0] ? 'on' : '') + '" onclick="A.go(\'' + x[0] + '\')"><span class="row">' + x[2] + esc(x[1]) + '</span>' + (x[3] ? '<span class="sbadge">' + x[3] + '</span>' : '') + '</button>').join('') + '<div class="me"><span class="tiny" style="color:#A9C7B8">Masuk sebagai</span><div class="mecard"><span class="avatar" style="width:32px;height:32px;font-size:12px;background:#E7ECFF;color:#2A3FB0">' + initials(S.user.name) + '</span><span class="col" style="gap:0"><b class="small">' + esc(S.user.name) + '</b><span class="tiny" style="color:#A9C7B8">' + S.user.role + '</span></span></div></div></nav>';
+    const side = '<nav class="side"><div class="brand"><span class="logo">BP</span><span class="col" style="gap:0"><b style="font-size:15px">Buku Proyek</b><span class="tiny" style="color:#A9C7B8">Admin – Finance</span></span></div>' + SECS.map((x) => '<button class="' + (view === x[0] ? 'on' : '') + '" onclick="A.tab(\'' + x[0] + '\')"><span class="row">' + x[2] + esc(x[1]) + '</span>' + (x[3] ? '<span class="sbadge">' + x[3] + '</span>' : '') + '</button>').join('') + '<div class="me"><span class="tiny" style="color:#A9C7B8">Masuk sebagai</span><div class="mecard"><span class="avatar" style="width:32px;height:32px;font-size:12px;background:#E7ECFF;color:#2A3FB0">' + initials(S.user.name) + '</span><span class="col" style="gap:0"><b class="small">' + esc(S.user.name) + '</b><span class="tiny" style="color:#A9C7B8">' + S.user.role + '</span></span></div></div></nav>';
     app.innerHTML = '<div class="shell desk">' + side + '<main class="page">' + body() + '</main></div>'; return;
   }
   else { nav = navBar([['home', 'Beranda', I.home], ['absen', 'Absen', I.user], ['nota', 'Nota', I.nota], ['menu', 'Menu', I.menu]], ['lapor', 'Lapor progres', I.cam]); body = { home: mandorHome, absen: absenView, lapor: laporView, nota: notaView, menu: menuView }[view] || mandorHome; }
