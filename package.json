@@ -1,0 +1,8 @@
+{
+  "name": "buku-proyek",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aplikasi pembukuan proyek untuk kontraktor kecil",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}
